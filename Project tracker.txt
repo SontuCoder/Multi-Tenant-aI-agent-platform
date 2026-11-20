@@ -1,0 +1,29 @@
+1. Database setup and connection
+   Configure PostgreSQL, pgvector and SQLModel.
+
+2. Create database tables
+   Create all four RAG tables and verify their relationships.
+
+3. Knowledge Base APIs
+   Create and list knowledge bases.
+
+4. Document Upload API
+   Upload PDF, DOCX and TXT files and store their metadata.
+
+5. Text Extraction
+   Extract text from uploaded documents.
+
+6. Text Chunking
+   Split extracted text into manageable chunks.
+
+7. Embedding Generation
+   Convert chunks into numerical vectors.
+
+8. Vector Storage
+   Save embeddings and metadata in PostgreSQL using pgvector.
+
+9. Semantic Search
+   Convert questions into embeddings and retrieve similar chunks.
+
+10. RAG Pipeline
+    Combine retrieved context with the user's question and send it to the LLM.
