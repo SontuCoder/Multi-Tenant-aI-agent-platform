@@ -1,4 +1,3 @@
-
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
 from enum import Enum as PyEnum
@@ -40,7 +39,7 @@ class DocumentStatus(str, PyEnum):
 
 
 # ==========================================
-# 2. KNOWLEDGE BASES
+# 2. KNOWLEDGE Table
 # ==========================================
 
 class KnowledgeBase(SQLModel, table=True):
@@ -94,7 +93,7 @@ class KnowledgeBase(SQLModel, table=True):
 
 
 # ==========================================
-# 3. DOCUMENTS
+# 3. DOCUMENTS Table
 # ==========================================
 
 class Document(SQLModel, table=True):
@@ -165,9 +164,7 @@ class Document(SQLModel, table=True):
     __table_args__ = (
         ForeignKeyConstraint(
             ["knowledge_base_id", "tenant_id"],
-            ["knowledge_bases.id", "knowledge_bases.tenant_id"],
-            ondelete="CASCADE",
-            name="fk_document_knowledge_base_tenant"
+            ["knowledge_bases.id", "knowledge_bases.tenant_id"], ondelete="CASCADE", name="fk_document_knowledge_base_tenant"
         ),
 
         UniqueConstraint(
@@ -184,7 +181,7 @@ class Document(SQLModel, table=True):
 
 
 # ==========================================
-# 4. DOCUMENT CHUNKS
+# 4. DOCUMENT Chunks Table
 # ==========================================
 
 class DocumentChunk(SQLModel, table=True):
@@ -202,7 +199,6 @@ class DocumentChunk(SQLModel, table=True):
 
     document_id: UUID = Field(
         nullable=False,
-        index=True
     )
 
     tenant_id: UUID = Field(
@@ -272,7 +268,7 @@ class DocumentChunk(SQLModel, table=True):
 
 
 # ==========================================
-# 5. EMBEDDING MODELS
+# 5. EMBEDDING Table
 # ==========================================
 
 class EmbeddingModel(SQLModel, table=True):

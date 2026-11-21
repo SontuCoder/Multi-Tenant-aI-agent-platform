@@ -27,3 +27,5 @@
 
 10. RAG Pipeline
     Combine retrieved context with the user's question and send it to the LLM.
+
+GET /api/documents/{id}/chunks
