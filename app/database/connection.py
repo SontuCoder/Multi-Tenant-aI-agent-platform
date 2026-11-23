@@ -1,6 +1,6 @@
 from sqlmodel import create_engine, Session, SQLModel
-from core import settings
-
+from app.core import settings
+from contextlib import contextmanager
 database_url = settings.DATABASE_URL
 
 if database_url.startswith("postgresql://"):
@@ -12,13 +12,22 @@ if database_url.startswith("postgresql://"):
 
 engine = create_engine(
     database_url,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=5,
+    pool_timeout=10,
     pool_recycle=300,
-    pool_pre_ping=True
+    connect_args={
+        "connect_timeout": 10
+    },
+    echo=False,
 )
+
 
 def get_session():
     with Session(engine) as session:
         yield session
+
 
 def create_tables():
     with engine.begin() as connection:
@@ -26,3 +35,9 @@ def create_tables():
             "CREATE EXTENSION IF NOT EXISTS vector"
         )
     SQLModel.metadata.create_all(engine)
+
+# For background tasks
+@contextmanager
+def get_background_session():
+    with Session(engine) as session:
+        yield session

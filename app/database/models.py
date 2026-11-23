@@ -147,6 +147,11 @@ class Document(SQLModel, table=True):
             default=DocumentStatus.UPLOADING
         )
     )
+    scenario: str | None = Field(
+        default=None,
+        sa_type=String(255),
+        nullable=True
+    )
 
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
@@ -226,6 +231,11 @@ class DocumentChunk(SQLModel, table=True):
         default_factory=dict,
         sa_type=JSONB,
         nullable=False
+    )
+    scenario: str | None = Field(
+        default=None,
+        sa_type=String(255),
+        nullable=True
     )
 
     created_at: datetime = Field(

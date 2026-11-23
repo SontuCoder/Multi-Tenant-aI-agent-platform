@@ -1,10 +1,11 @@
-from fastapi import APIRouter, status, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, status, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from sqlmodel import Session, select
 from uuid import uuid4, UUID
 from pathlib import Path
 from  hashlib import sha256
-from database import get_session, KnowledgeBase, upload_file, delete_file, Document, DocumentStatus, FileType
+from database import get_session, KnowledgeBase, upload_file, delete_file, Document, DocumentStatus, FileType, get_background_session
 from models import KnowledgeCreate, KnowledgeResponse, DocumentUploadResponse
+from services import process_document
 
 route = APIRouter(prefix="/api/knowledge-bases", tags=["Knowledge Base"])
 
@@ -57,6 +58,7 @@ CONTENT_TYPES = {
 def save_document(
     file: UploadFile,
     knowledge_base,
+    
     session
 ):
     extension = Path(file.filename or "").suffix.lower()
@@ -212,3 +214,72 @@ def get_documents(knowledge_base_id: UUID, session: Session = Depends(get_sessio
 
     query = select(Document).where(Document.knowledge_base_id==knowledge_base_id)
     return session.exec(query).all()
+
+
+@route.post("/{knowledge_base_id}/documents/{document_id}/process", status_code=status.HTTP_202_ACCEPTED, response_model=DocumentUploadResponse)
+def document_process(knowledge_base_id: UUID, document_id: UUID, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
+    knowledge_base = session.get(
+        KnowledgeBase,
+        knowledge_base_id
+    )
+    
+    if not knowledge_base:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Knowledge base not found"
+        )
+
+    document = session.get(
+        Document,
+        document_id
+    )
+    
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document is not found"
+        )
+    if document.knowledge_base_id != knowledge_base_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found in this knowledge base"
+        )
+    if document.status == DocumentStatus.PROCESSING:
+        raise HTTPException(
+            status_code=409,
+            detail="Document is already processing"
+        )
+    if document.status == DocumentStatus.COMPLETED:
+        raise HTTPException(
+            status_code=409,
+            detail="Document already processed"
+        )
+    if document.status not in (DocumentStatus.UPLOADED, DocumentStatus.FAILED):
+        raise HTTPException(
+            status_code=400,
+            detail="Document cannot be processed"
+        )
+
+    document.status = DocumentStatus.PROCESSING
+
+    session.add(document)
+    session.commit()
+    session.refresh(document)
+
+    document_data = {
+        "id": str(document.id),
+        "filename": document.filename,
+        "file_path": document.file_path,
+        "file_type": document.file_type.value,
+        "knowledge_base_id": str(document.knowledge_base_id),
+        "tenant_id": str(document.tenant_id)
+    }
+
+    background_tasks.add_task(
+        process_document,
+        document_data
+    )
+
+    return DocumentUploadResponse.model_validate(document)
+
+

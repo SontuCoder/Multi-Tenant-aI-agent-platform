@@ -48,8 +48,18 @@ class DocumentUploadResponse(SQLModel):
     file_path: str
     file_type: FileType
     file_hash: str
+    scenario: str | None
     status: DocumentStatus
     created_at: datetime
     updated_at: datetime
 
-    
+class SemanticSearchResult(SQLModel):
+    chunk_id: UUID
+    document_id: UUID
+    chunk_text: str
+    distance: float
+
+class SemanticSearchResponse(SQLModel):
+    knowledge_base_id: UUID
+    question: str
+    results: list[SemanticSearchResult]

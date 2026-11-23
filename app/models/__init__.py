@@ -1,1 +1,2 @@
-from .knowledge import KnowledgeCreate, KnowledgeResponse, DocumentUploadResponse
+from .knowledge import KnowledgeCreate, KnowledgeResponse, DocumentUploadResponse, SemanticSearchResult
+from .agent import AgentRequest, AgentResponse

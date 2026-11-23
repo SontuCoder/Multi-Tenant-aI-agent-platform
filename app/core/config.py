@@ -5,6 +5,8 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     OPENAI_API_KEY: str
     OPENAI_EMBEDDING_MODEL: str
+    EMBEDDING_DIMENSIONS: int
+    BATCH_SIZE: int
     NEON_STORAGE_BUCKET: str
     AWS_ENDPOINT_URL_S3: str
     AWS_REGION: str

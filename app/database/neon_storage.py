@@ -1,4 +1,4 @@
-from core import settings
+from app.core import settings
 import boto3
 
 from botocore.config import Config
@@ -48,4 +48,9 @@ def download_file(object_key: str):
         Key=object_key
     )
 
-    return response["Body"]
+    try:
+        return response["Body"].read()
+    finally:
+        response["Body"].close()
+
+        

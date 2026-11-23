@@ -1,7 +1,7 @@
 from logging.config import fileConfig
 from sqlmodel import SQLModel
-from app.core import settings
-from app.database import KnowledgeBase, Document, DocumentChunk, EmbeddingModel
+from app.core.config import settings
+from app.database.models import KnowledgeBase, Document, DocumentChunk, EmbeddingModel
 
 from sqlalchemy import engine_from_config, pool
 from alembic import context
