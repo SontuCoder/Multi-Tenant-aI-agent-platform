@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     AWS_ACCESS_KEY_ID: str
     AWS_SECRET_ACCESS_KEY: str
     TEXT_GENERATE_AI_MODEL: str
+    JWT_SECRET_KEY: str
+    JWT_ALGORITHM: str
+    ACCESS_TOKEN_EXPIRE_MINUTES: str
+    JWT_ISSUER:str
+    JWT_AUDIENCE:str
 
     model_config = SettingsConfigDict(
         env_file=".env",

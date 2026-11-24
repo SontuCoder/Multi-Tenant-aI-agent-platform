@@ -1,4 +1,4 @@
-from core import settings
+from app.core import settings
 import boto3
 
 from botocore.config import Config

@@ -5,7 +5,7 @@ from pathlib import Path
 from  hashlib import sha256
 from database import get_session, KnowledgeBase, upload_file, delete_file, Document, DocumentStatus, FileType, get_background_session
 from models import KnowledgeCreate, KnowledgeResponse, DocumentUploadResponse
-from services import process_document
+from agent_services import process_document
 
 route = APIRouter(prefix="/api/knowledge-bases", tags=["Knowledge Base"])
 

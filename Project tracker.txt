@@ -1,6 +1,16 @@
+6. Current architecture decisions — frozen draft
 
-9. Semantic Search
-   Convert questions into embeddings and retrieve similar chunks.
+Tenant hierarchy ||	Tenant → Project → Documents
+Tenant creation	|| First user becomes Admin
+User membership	|| Multiple tenants supported
+Tenant roles	|| Admin, Folder Administrator, AI User
+Project visibility	|| All tenant members
+Project management	|| Admin and Folder Administrator
+Document management	|| Admin and Folder Administrator
+API token creation	|| All three roles
+Token visibility	|| Admin: all; others: own
+Agent execution	|| All three roles
+AI architecture	|| One common agent and shared LLM
+Knowledge isolation	|| Tenant + Project
 
-10. RAG Pipeline
-    Combine retrieved context with the user's question and send it to the LLM.
+

@@ -7,7 +7,6 @@ from sqlalchemy import (
     Column,
     String,
     Text,
-    Boolean,
     Integer,
     DateTime,
     Enum as SAEnum,
@@ -89,6 +88,12 @@ class KnowledgeBase(SQLModel, table=True):
             "id", "tenant_id",
             name="uq_knowledge_base_tenant"
         ),
+        ForeignKeyConstraint(
+            ["tenant_id"],
+            ["tenant.id"],
+            ondelete="CASCADE",
+            name="fk_tenant"
+        )
     )
 
 

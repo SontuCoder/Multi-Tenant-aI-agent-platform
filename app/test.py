@@ -1,27 +1,15 @@
+from openai import OpenAI
+from app.core.config import settings
 
-from uuid import UUID
-from database import get_background_session
-from services.semantic_search import search_similar_chunks
+client = OpenAI(
+    api_key=settings.OPENAI_API_KEY
+)
 
-tenant_id = UUID("6322f08c-e261-4733-9127-4c7490d5eea5")
-knowledge_base_id = UUID("7d099ed6-82d7-46d9-b423-04eaf3197f6c")
+response = client.chat.completions.create(
+    model="gpt-4.1-mini",
+    messages=[
+        {"role": "user", "content": "Reply with Hello"}
+    ]
+)
 
-search_text = """
-Question: what is objectives of this projects?.
-"""
-
-with get_background_session() as session:
-
-    results = search_similar_chunks(
-        session=session,
-        question=search_text,
-        tenant_id=tenant_id,
-        knowledge_base_id=knowledge_base_id,
-        top_k=5,
-    )
-
-    for result in results:
-        print("Chunk:", result.chunk_id)
-        print("Distance:", result.distance)
-        print("Text:", result.chunk_text)
-        print("-" * 50)
+print(response.choices[0].message.content)

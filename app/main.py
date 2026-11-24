@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from database import create_tables
 import uvicorn
-from api import knowledge_route, agent_route
+from api import knowledge_route, agent_route, auth_route
 
 @asynccontextmanager
 async def startup(app: FastAPI):
@@ -20,6 +20,10 @@ def health():
 
 app.include_router(knowledge_route)
 app.include_router(agent_route)
+app.include_router(auth_route)
 
 if __name__ == "__main__":
     uvicorn.run("main:app", port=8000, host="127.0.0.1", reload=True)
+
+
+

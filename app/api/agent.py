@@ -3,7 +3,7 @@ from sqlmodel import Session
 from uuid import UUID
 from database import get_session, KnowledgeBase
 from models import AgentRespones, AgentRequest
-from services import search_similar_chunks, build_retrieval_text, build_retrieved_context, build_agent_prompt, execute_agent, validate_agent_result
+from agent_services import search_similar_chunks, build_retrieval_text, build_retrieved_context, build_agent_prompt, execute_agent, validate_agent_result
 
 route = APIRouter(prefix="/api/agent", tags=["Agent"])
 
@@ -11,7 +11,7 @@ route = APIRouter(prefix="/api/agent", tags=["Agent"])
 def get_agent_response(tenant_id:UUID, knowledge_id: UUID, agent_request: AgentRequest, session: Session = Depends(get_session)):
 
     ## Tenant Verify Pending
-    
+
     knowledge_base = session.get(
         KnowledgeBase,
         knowledge_id
@@ -45,7 +45,9 @@ def get_agent_response(tenant_id:UUID, knowledge_id: UUID, agent_request: AgentR
     chunks_text = build_retrieved_context(chunks)
 
     ai_prompt = build_agent_prompt(agent_request.mail_data, agent_request.input_language, agent_request.output_language, question, agent_request.user_prompt, chunks_text)
+    # print(ai_prompt)
     agent_response = execute_agent(ai_prompt)
+    print(agent_response)
     validate_ai_response = validate_agent_result(agent_response, chunks)
 
     return AgentRespones(
