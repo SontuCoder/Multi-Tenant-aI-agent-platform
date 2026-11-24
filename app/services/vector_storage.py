@@ -57,6 +57,7 @@ def store_chunks(
                 chunk_index=index,
                 chunk_text=chunk_text,
                 embedding=embedding,
+                scenario=document.scenario,
                 chunk_metadata={
                     "filename": document.filename,
                     "chunk_index": index

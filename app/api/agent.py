@@ -1,13 +1,13 @@
 from fastapi import APIRouter, status, Depends, HTTPException
-from sqlmodel import Session, select
-from uuid import uuid4, UUID
+from sqlmodel import Session
+from uuid import UUID
 from database import get_session, KnowledgeBase
-from models import AgentResponse, AgentRequest
-from services import search_similar_chunks, build_retrieval_text, build_retrieved_context
+from models import AgentRespones, AgentRequest
+from services import search_similar_chunks, build_retrieval_text, build_retrieved_context, build_agent_prompt, execute_agent, validate_agent_result
 
 route = APIRouter(prefix="/api/agent", tags=["Agent"])
 
-@route.post("/{tenant_id}/{knowledge_id}", status_code=status.HTTP_200_OK, response_model=AgentResponse)
+@route.post("/{tenant_id}/{knowledge_id}", status_code=status.HTTP_200_OK, response_model=AgentRespones)
 def get_agent_response(tenant_id:UUID, knowledge_id: UUID, agent_request: AgentRequest, session: Session = Depends(get_session)):
 
     ## Tenant Verify Pending
@@ -36,7 +36,7 @@ def get_agent_response(tenant_id:UUID, knowledge_id: UUID, agent_request: AgentR
 
     chunks = search_similar_chunks(session, question, tenant_id, knowledge_id)
     if not chunks:
-        return AgentResponse(
+        return AgentRespones(
             scenario="UNKNOWN",
             output_language=agent_request.output_language,
             ai_message="I could not find relevant information in the knowledge base."
@@ -44,5 +44,16 @@ def get_agent_response(tenant_id:UUID, knowledge_id: UUID, agent_request: AgentR
 
     chunks_text = build_retrieved_context(chunks)
 
-    # Need edit every document has a column as Scenario
+    ai_prompt = build_agent_prompt(agent_request.mail_data, agent_request.input_language, agent_request.output_language, question, agent_request.user_prompt, chunks_text)
+    agent_response = execute_agent(ai_prompt)
+    validate_ai_response = validate_agent_result(agent_response, chunks)
+
+    return AgentRespones(
+        scenario=validate_ai_response.get("scenario", "UNKNOWN"),
+        output_language=validate_ai_response.get("output_language", "unknown"),
+        ai_message=validate_ai_response.get("ai_message", ""),
+        confident=validate_ai_response.get("confident", "0")
+    )
+
+
 

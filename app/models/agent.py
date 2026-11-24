@@ -1,7 +1,6 @@
 
 from sqlmodel import SQLModel, Field
 from pydantic import EmailStr
-from enum import Enum
 
 class MailData(SQLModel):
     subject: str
@@ -18,8 +17,8 @@ class AgentRequest(SQLModel):
     user_prompt: str
 
 
-class AgentResponse(SQLModel):
+class AgentRespones(SQLModel):
     scenario: str
     output_language: str
     ai_message: str
-
+    confident: str

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, status, Depends, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi import APIRouter, status, Depends, HTTPException, UploadFile, File, BackgroundTasks, Query
 from sqlmodel import Session, select
 from uuid import uuid4, UUID
 from pathlib import Path
@@ -58,7 +58,7 @@ CONTENT_TYPES = {
 def save_document(
     file: UploadFile,
     knowledge_base,
-    
+    scenario: str | None,
     session
 ):
     extension = Path(file.filename or "").suffix.lower()
@@ -152,6 +152,7 @@ def save_document(
             file_path=object_key,
             file_type=file_type,
             file_hash=calculated_hash,
+            scenario=scenario,
             status=DocumentStatus.UPLOADED
         )
 
@@ -178,6 +179,7 @@ def save_document(
 def upload_document(
     knowledge_base_id: UUID,
     file: UploadFile = File(...),
+    scenario: str | None = Query(None),
     session: Session = Depends(get_session)
 ):
     knowledge_base = session.get(
@@ -190,10 +192,13 @@ def upload_document(
             status_code=404,
             detail="Knowledge base not found"
         )
+    if scenario:
+        scenario = scenario.strip().upper().replace(" ", "_")
 
     document = save_document(
         file=file,
         knowledge_base=knowledge_base,
+        scenario=scenario,
         session=session
     )
 
@@ -215,14 +220,13 @@ def get_documents(knowledge_base_id: UUID, session: Session = Depends(get_sessio
     query = select(Document).where(Document.knowledge_base_id==knowledge_base_id)
     return session.exec(query).all()
 
-
 @route.post("/{knowledge_base_id}/documents/{document_id}/process", status_code=status.HTTP_202_ACCEPTED, response_model=DocumentUploadResponse)
 def document_process(knowledge_base_id: UUID, document_id: UUID, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
     knowledge_base = session.get(
         KnowledgeBase,
         knowledge_base_id
     )
-    
+
     if not knowledge_base:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -271,6 +275,7 @@ def document_process(knowledge_base_id: UUID, document_id: UUID, background_task
         "filename": document.filename,
         "file_path": document.file_path,
         "file_type": document.file_type.value,
+        "scenario": document.scenario,
         "knowledge_base_id": str(document.knowledge_base_id),
         "tenant_id": str(document.tenant_id)
     }

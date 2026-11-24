@@ -58,6 +58,7 @@ class SemanticSearchResult(SQLModel):
     document_id: UUID
     chunk_text: str
     distance: float
+    scenario: str | None
 
 class SemanticSearchResponse(SQLModel):
     knowledge_base_id: UUID

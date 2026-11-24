@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     AWS_REGION: str
     AWS_ACCESS_KEY_ID: str
     AWS_SECRET_ACCESS_KEY: str
+    TEXT_GENERATE_AI_MODEL: str
 
     model_config = SettingsConfigDict(
         env_file=".env",
