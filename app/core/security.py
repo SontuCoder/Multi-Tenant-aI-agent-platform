@@ -14,21 +14,20 @@ def hash_password(password: str)-> str:
 def verify_password(plain_pass: str, hased_pass: str)-> bool:
     return password_hash.verify(plain_pass, hased_pass)
 
-def create_access_token(user_id: UUID, session_id: UUID)-> str:
+def create_access_token(user_id: UUID, session_id: UUID, expires_at:datetime | None = None)-> str:
     now = datetime.now(timezone.utc)
+
+    default_expiry = now + timedelta(
+        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+    )
+    final_expiry = min(default_expiry, expires_at) if expires_at else default_expiry
 
     payload = {
         "sub": str(user_id),
         "sid": str(session_id),
         "jti": str(uuid4()),
-        "iat":int(now.timestamp()),
-        "exp": int(
-            (
-                now + timedelta(
-                    minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-                )
-            ).timestamp()
-        ),
+        "iat": int(now.timestamp()),
+        "exp": int(final_expiry.timestamp()),
         "type": "access",
         "iss": settings.JWT_ISSUER,
         "aud": settings.JWT_AUDIENCE
@@ -55,7 +54,6 @@ def decode_access_token(access_token: str)-> dict:
         raise JWTError("Missing required token claims")
 
     return payload
-
 
 def generate_secure_token()-> str:
     return secrets.token_urlsafe(64)

@@ -1,5 +1,5 @@
 from sqlmodel import create_engine, Session, SQLModel
-from app.core import settings
+from core import settings
 from contextlib import contextmanager
 database_url = settings.DATABASE_URL
 

@@ -15,9 +15,16 @@ class Settings(BaseSettings):
     TEXT_GENERATE_AI_MODEL: str
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str
-    ACCESS_TOKEN_EXPIRE_MINUTES: str
+    ACCESS_TOKEN_EXPIRE_MINUTES: int
+    REFRESH_TOKEN_EXPIRE_DAYS:int
+    SESSION_IDLE_TIMEOUT_DAYS:int
+    SESSION_ABSOLUTE_TIMEOUT_DAYS:int
     JWT_ISSUER:str
     JWT_AUDIENCE:str
+    RESEND_API_KEY:str
+    RESEND_FROM_EMAIL:str
+    FRONTEND_URL: str
+    IS_Prod:bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -49,3 +49,16 @@ class UserRegister(SQLModel):
 class UserLogin(SQLModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)
+
+class EmailVerifyToken(SQLModel):
+    token: str = Field(min_length=20, max_length=200)
+
+class ResendEmailTokenRequest(SQLModel):
+    email: EmailStr
+
+class InvalidRefreshToken(Exception):
+    pass
+
+class RefreshTokenReuseDetected(Exception):
+    pass
+
