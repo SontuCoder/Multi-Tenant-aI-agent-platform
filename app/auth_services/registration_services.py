@@ -2,11 +2,18 @@ from sqlmodel import Session, select
 from core import settings
 from core import hash_token, generate_secure_token, decode_access_token, create_access_token, verify_password, hash_password
 from uuid import UUID
-from database import User, EmailVerificationToken, AuthSession, RefreshToken
+from database import User, EmailVerificationToken, AuthSession, RefreshToken, get_session, PasswordResetToken
 from datetime import datetime, timezone, timedelta
 from models import UserRegister, EmailVerifyToken, UserLogin, InvalidRefreshToken, RefreshTokenReuseDetected
-from .email_service import send_verification_email
-from fastapi import HTTPException, Response, Request, status
+from .email_service import send_verification_email, send_password_reset_email, send_password_reset_success_email
+from fastapi import HTTPException, Response, Request, status, Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from dataclasses import dataclass
+from jose import JWTError
+
+
+bearer_scheme = HTTPBearer(auto_error=False)
+
 
 def check_email_exists(email: str, session: Session)-> bool:
     query = select(User).where(User.email == email)
@@ -535,3 +542,264 @@ def refresh_tokens(
     except Exception:
         session.rollback()
         raise
+
+def logout_user(user_id: UUID, session_id: UUID,session: Session):
+    now = datetime.now(timezone.utc)
+
+    # 1. Lock the current authentication session.
+    auth_session = session.exec(
+        select(AuthSession)
+        .where(
+            AuthSession.id == session_id,
+            AuthSession.user_id == user_id
+        )
+        .with_for_update()
+    ).first()
+
+    if auth_session is None:
+        raise InvalidRefreshToken("Authentication session not found.")
+
+    # 2. Check whether the session is already revoked.
+    if auth_session.revoked_at is not None:
+        return
+
+    # 3. Revoke the current session.
+    auth_session.revoked_at = now
+    auth_session.revocation_reason = "logout"
+
+    # 4. Revoke all active refresh tokens.
+    revoke_active_refresh_tokens(
+        auth_session=auth_session,
+        session=session,
+        now=now
+    )
+
+    # 5. Commit changes.
+    session.commit()
+
+def logout_all_devices(
+    user_id: UUID,
+    session: Session
+) -> int:
+
+    now = datetime.now(timezone.utc)
+
+    try:
+        # 1. Find all active sessions for the user.
+        auth_sessions = session.exec(
+            select(AuthSession)
+            .where(
+                AuthSession.user_id == user_id,
+                AuthSession.revoked_at.is_(None)
+            )
+            .order_by(AuthSession.id)
+            .with_for_update()
+        ).all()
+
+        # 2. Revoke every active session.
+        for auth_session in auth_sessions:
+
+            auth_session.revoked_at = now
+            auth_session.revocation_reason = "logout_all"
+
+            # 3. Revoke associated active refresh tokens.
+            revoke_active_refresh_tokens(
+                auth_session=auth_session,
+                session=session,
+                now=now
+            )
+
+        # 4. Commit all changes.
+        session.commit()
+
+        return len(auth_sessions)
+
+    except Exception:
+        session.rollback()
+        raise
+
+@dataclass
+class CurrentAuth:
+    user: User
+    auth_session: AuthSession
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    session: Session = Depends(get_session)
+) -> CurrentAuth:
+
+    # 1. Check whether the Authorization header exists.
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication credentials are missing.",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
+    try:
+        # 2. Decode and validate the access JWT.
+        payload = decode_access_token(credentials.credentials)
+
+        # 3. Extract and validate UUID claims.
+        user_id = UUID(payload["sub"])
+        session_id = UUID(payload["sid"])
+
+    except (JWTError, ValueError, KeyError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired access token.",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
+    # 4. Get the user from the database.
+    user = session.exec(
+        select(User).where(User.id == user_id)
+    ).first()
+
+    if user is None or not user.is_email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User account is unavailable.",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
+    # 5. Get the corresponding authentication session.
+    auth_session = session.exec(
+        select(AuthSession).where(
+            AuthSession.id == session_id,
+            AuthSession.user_id == user_id
+        )
+    ).first()
+
+    if auth_session is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication session not found.",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
+    # 6. Check whether the session has been revoked.
+    if auth_session.revoked_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Your session has been revoked. Please log in again.",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
+    # 7. Check idle and absolute session expiry.
+    now = datetime.now(timezone.utc)
+
+    if (
+        auth_session.idle_expires_at <= now
+        or auth_session.absolute_expires_at <= now
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Your session has expired. Please log in again.",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
+    # 8. Return authenticated user and session.
+    return CurrentAuth(
+        user=user,
+        auth_session=auth_session
+    )
+
+
+async def forgot_pass_request(email: str, session: Session):
+    query = select(User).where(User.email == email)
+    user = session.exec(query).first()
+    if user is None: 
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found with this email."
+        )
+    now = datetime.now(timezone.utc)
+
+    query = select(PasswordResetToken).where(PasswordResetToken.user_id == user.id, PasswordResetToken.expires_at >= now, PasswordResetToken.consumed_at.is_(None))
+    old_reset_tokens = session.exec(query).all()
+    for token in old_reset_tokens:
+        token.consumed_at=now
+
+    reset_token = generate_secure_token()
+    token_hash = hash_token(reset_token)
+    new_pass_reset = PasswordResetToken(user_id=user.id,
+        token_hash=token_hash, created_at=now, 
+        expires_at=now + timedelta(minutes=15))
+    session.add(new_pass_reset)
+    session.commit()
+
+    await send_password_reset_email(user.email, reset_token)
+
+async def reset_password_requst(token: str, new_password: str, session: Session, device_name: str|None=None):
+    
+    try: 
+        hased_token = hash_token(token)
+        hashed_pass = hash_password(new_password)
+        now = datetime.now(timezone.utc)
+    
+        query = select(PasswordResetToken).where(PasswordResetToken.token_hash == hased_token).with_for_update()
+        reset_token_entry = session.exec(query).first()
+    
+        if reset_token_entry is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid password reset token."
+            )
+        if reset_token_entry.expires_at < now:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Password reset token has expired."
+            )
+        if reset_token_entry.consumed_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Password reset token has already been used."
+            )
+    
+        query = select(User).where(User.id == reset_token_entry.user_id)
+        user = session.exec(query).first()
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        if verify_password(new_password, user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot reuse your current password."
+            )
+        
+        auth_sessions = session.exec(
+            select(AuthSession)
+            .where(
+                AuthSession.user_id == user.id,
+                AuthSession.revoked_at.is_(None)
+            )
+            .order_by(AuthSession.id)
+            .with_for_update()
+        ).all()
+
+        # 8. Revoke all active sessions and refresh tokens.
+        for auth_session in auth_sessions:
+
+            auth_session.revoked_at = now
+            auth_session.revocation_reason = "password_reset"
+
+            revoke_active_refresh_tokens(
+                auth_session=auth_session,
+                session=session,
+                now=now
+            )
+
+        reset_token_entry.consumed_at = now
+        user.password_hash = hashed_pass
+    
+        session.commit()
+    except:
+        session.rollback()
+        raise
+
+    await send_password_reset_success_email(user.email, device_name)
+

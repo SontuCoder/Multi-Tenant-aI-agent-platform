@@ -1,12 +1,11 @@
 from fastapi import APIRouter, status, Depends, HTTPException, Response, Request
 from sqlmodel import Session
 from sqlalchemy.exc import IntegrityError
-from uuid import UUID
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from core import settings
-from database import get_session, User, Tenant, TenantMembership, TenantRole
-from models import UserRegister, UserLogin, EmailVerifyToken, ResendEmailTokenRequest, RefreshTokenReuseDetected, InvalidRefreshToken
-from auth_services import register_user, verify_email, resend_verification_token, login_user, set_cookie_details, refresh_tokens, revoke_active_refresh_tokens, delete_cookie_details, get_cookie_details
+from database import get_session
+from models import UserRegister, UserLogin, EmailVerifyToken, ResendEmailTokenRequest, RefreshTokenReuseDetected, InvalidRefreshToken, ForgotPasswordRequest, ResetPasswordRequest
+from auth_services import register_user, verify_email, resend_verification_token, login_user, set_cookie_details, refresh_tokens, delete_cookie_details, get_cookie_details, logout_user, logout_all_devices, get_current_user, CurrentAuth, forgot_pass_request, reset_password_requst
 
 import traceback
 
@@ -123,7 +122,7 @@ def login(
         )
 
     except ValueError as exc:
-        traceback.print_exc()
+        # traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(exc)
@@ -246,3 +245,121 @@ def get_refresh_token(
             detail="Unable to process refresh request."
         )
 
+@route.post("/logout", status_code=status.HTTP_200_OK)
+def logout( response: Response, current_auth: CurrentAuth = Depends(get_current_user), session: Session = Depends(get_session)):
+    try:
+
+        logout_user(
+            user_id=current_auth.user.id,
+            session_id=current_auth.auth_session.id,
+            session=session
+        )
+
+        # Clear refresh-token cookie.
+        delete_cookie_details(
+            key="refresh_token",
+            path="/api/auth",
+            response=response
+        )
+
+        return {
+            "status": "SUCCESS",
+            "message": "Logged out successfully."
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        session.rollback()
+        # traceback.print_exc()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to process logout request."
+        )
+
+
+@route.post("/logout-all", status_code=status.HTTP_200_OK)
+def logout_all(
+    response: Response,
+    current_auth: CurrentAuth = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    try:
+
+        revoked_sessions = logout_all_devices(
+            user_id=current_auth.user.id,
+            session=session
+        )
+
+        delete_cookie_details(
+            key="refresh_token",
+            path="/api/auth",
+            response=response
+        )
+
+        return {
+            "status": "SUCCESS",
+            "message": "Logged out from all devices successfully.",
+            "revoked_sessions": revoked_sessions
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        session.rollback()
+        # traceback.print_exc()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to process logout-all request."
+        )
+
+@route.post("/forgot-password", status_code=status.HTTP_200_OK)
+async def forgot_pass(user: ForgotPasswordRequest, session: Session=Depends(get_session)):
+    try:
+        await forgot_pass_request(str(user.email), session)
+        return {
+            "status": "SUCCESS",
+            "message": "Reset password mail sent successfully."
+        }
+    except HTTPException:
+        raise
+    
+    except Exception:
+        session.rollback()
+        # traceback.print_exc()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to process forgot password request."
+        )
+
+@route.post("/reset-password", status_code=status.HTTP_200_OK)
+async def reset_password(user_data: ResetPasswordRequest, request: Request, session: Session = Depends(get_session)):
+    try:
+        # 1. Get device information.
+        device_name = request.headers.get("X-Device-Name", "Unknown device")
+
+        user_agent = request.headers.get("user-agent", "Unknown browser")
+        device_info = f"{device_name} | {user_agent}"
+        await reset_password_requst(user_data.token, user_data.new_password, session, device_info)
+        return {
+            "status": "SUCCESS",
+            "message": "Reset password successfully. Please Log in with new password."
+        }
+    except HTTPException:
+        raise
+    
+    except Exception:
+        session.rollback()
+        # traceback.print_exc()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to process reset password request."
+        )
+
+    

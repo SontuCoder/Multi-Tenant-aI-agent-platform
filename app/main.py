@@ -12,7 +12,7 @@ async def startup(app: FastAPI):
 
 app = FastAPI(title="Multi-Tenant RAG Platform", lifespan=startup)
 
-@app.get("/", status_code=200)
+@app.get("/api/", status_code=200, tags=["Health"])
 def health():
     return {
         "message": "all Ok buddy 🙃👍"

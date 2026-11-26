@@ -21,7 +21,7 @@ class UserRegister(SQLModel):
         if len(value) > 50:
             raise ValueError("Username cannot exceed 50 characters.")
 
-        if not re.fullmatch(r"[a-zA-Z0-9_]+", value):
+        if not re.fullmatch(r"[a-zA-Z0-9_ ]+", value):
             raise ValueError(
                 "Username can contain only letters, numbers, and underscores."
             )
@@ -55,6 +55,30 @@ class EmailVerifyToken(SQLModel):
 
 class ResendEmailTokenRequest(SQLModel):
     email: EmailStr
+
+class ForgotPasswordRequest(SQLModel):
+    email: EmailStr
+
+class ResetPasswordRequest(SQLModel):
+    new_password: str = Field(min_length=1, max_length=128)
+    token: str = Field(min_length=20, max_length=200)
+
+    @field_validator("new_password")
+    @classmethod
+    def verify_password(cls, value: str) -> str:
+        if not re.search(r"[a-z]", value):
+            raise ValueError("Password must contain at least one lowercase letter.")
+
+        if not re.search(r"[A-Z]", value):
+            raise ValueError("Password must contain at least one uppercase letter.")
+
+        if not re.search(r"\d", value):
+            raise ValueError("Password must contain at least one digit.")
+
+        if not re.search(r"[^a-zA-Z0-9]", value):
+            raise ValueError("Password must contain at least one special character.")
+
+        return value
 
 class InvalidRefreshToken(Exception):
     pass
