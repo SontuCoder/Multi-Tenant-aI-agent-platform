@@ -3,46 +3,13 @@ from sqlmodel import Session, select
 from uuid import uuid4, UUID
 from pathlib import Path
 from  hashlib import sha256
-from database import get_session, KnowledgeBase, upload_file, delete_file, Document, DocumentStatus, FileType, get_background_session
+from database import get_session, KnowledgeBase, upload_file, delete_file, Document, DocumentStatus, FileType, TenantRole
 from models import KnowledgeCreate, KnowledgeResponse, DocumentUploadResponse
 from agent_services import process_document
+from tenant_service import user_has_tenant_access
+from auth_services import get_current_user, CurrentAuth
 
 route = APIRouter(prefix="/api/knowledge-bases", tags=["Knowledge Base"])
-
-
-@route.post("",status_code=status.HTTP_201_CREATED, response_model=KnowledgeResponse)
-def create_knowledge(project:KnowledgeCreate, session: Session = Depends(get_session)):
-
-    project_data = project.model_dump()
-    project_data["name"] = project_data["name"].strip()
-    tenant_id, name = project.tenant_id, project.name.strip()
-    query = select(KnowledgeBase).where(KnowledgeBase.name == name, KnowledgeBase.tenant_id == tenant_id)
-    existing_project = session.exec(query).first()
-
-    if existing_project: 
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Current tenant already has a knowledge with this name."
-        )
-
-    new_project =KnowledgeBase(**project_data.model_dump())
-    session.add(new_project)
-    session.commit()
-    session.refresh(new_project)
-    return KnowledgeResponse.model_validate(new_project)
-
-@route.get("/{project_id}", status_code=status.HTTP_200_OK, response_model=KnowledgeResponse)
-def get_knowledge(project_id:UUID, session: Session = Depends(get_session)):
-    query = select(KnowledgeBase).where(KnowledgeBase.id == project_id)
-    existing_project = session.exec(query).first()
-
-    if not existing_project:
-        raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Knowledge has been not found with this id."
-            )
-    return KnowledgeResponse.model_validate(existing_project)
-
 
 MAX_FILE_SIZE = 20 * 1024 * 1024
 
@@ -54,6 +21,71 @@ CONTENT_TYPES = {
     ),
     ".txt": (FileType.TXT, "text/plain")
 }
+
+@route.post("",status_code=status.HTTP_201_CREATED, response_model=KnowledgeResponse)
+def create_knowledge(project:KnowledgeCreate, current_user: CurrentAuth = Depends(get_current_user), session: Session = Depends(get_session)):
+    project_data = project.model_dump()
+    project_data["name"] = project_data["name"].strip()
+    tenant_id, name = project.tenant_id, project.name.strip()
+
+    member_role = user_has_tenant_access(current_user.user.id, tenant_id, session)
+    if member_role not in {
+        TenantRole.ADMIN,
+        TenantRole.FOLDER_ADMINISTRATOR
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to create a Knowledge base."
+        )
+
+    query = select(KnowledgeBase).where(KnowledgeBase.name == name, KnowledgeBase.tenant_id == tenant_id)
+    existing_project = session.exec(query).first()
+
+    if existing_project: 
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Current tenant already has a knowledge with this name."
+        )
+
+    new_project =KnowledgeBase(**project_data.model_dump())
+    try:
+        session.add(new_project)
+        session.commit()
+        session.refresh(new_project)
+        return KnowledgeResponse.model_validate(new_project)
+    
+    except HTTPException:
+            raise
+    except Exception:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to get create Knowledge."
+        )
+    
+
+@route.get("/{tenant_id}/{project_id}", status_code=status.HTTP_200_OK, response_model=KnowledgeResponse)
+def get_knowledge(tenant_id: UUID, project_id:UUID, current_user: CurrentAuth = Depends(get_current_user), session: Session = Depends(get_session)):
+    try:
+        user_has_tenant_access(current_user.user.id, tenant_id, session)
+        query = select(KnowledgeBase).where(KnowledgeBase.id == project_id)
+        existing_project = session.exec(query).first()
+    
+        if not existing_project:
+            raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Knowledge has been not found with this id."
+                )
+        return KnowledgeResponse.model_validate(existing_project)
+    except HTTPException:
+            raise
+    except Exception:
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to get Knowledge details."
+        )
+
 
 def save_document(
     file: UploadFile,
@@ -171,120 +203,166 @@ def save_document(
                 delete_file(object_key)
             except Exception:
                 # Log this failure and reconcile orphaned objects later.
-                pass
-
+                raise
         raise 
 
-@route.post("/{knowledge_base_id}/documents", status_code=status.HTTP_201_CREATED, response_model=DocumentUploadResponse)
+@route.post("/{tenant_id}/{knowledge_base_id}/documents", status_code=status.HTTP_201_CREATED, response_model=DocumentUploadResponse)
 def upload_document(
+    tenant_id: UUID,
     knowledge_base_id: UUID,
     file: UploadFile = File(...),
     scenario: str | None = Query(None),
+    current_user: CurrentAuth = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
-    knowledge_base = session.get(
-        KnowledgeBase,
-        knowledge_base_id
-    )
-
-    if not knowledge_base:
-        raise HTTPException(
-            status_code=404,
-            detail="Knowledge base not found"
+    try:
+        member_role = user_has_tenant_access(current_user.user.id, tenant_id, session)
+        if member_role not in {
+            TenantRole.ADMIN,
+            TenantRole.FOLDER_ADMINISTRATOR
+        }:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to create a Knowledge base."
+            )
+        
+        knowledge_base = session.get(
+            KnowledgeBase,
+            knowledge_base_id
         )
-    if scenario:
-        scenario = scenario.strip().upper().replace(" ", "_")
-
-    document = save_document(
-        file=file,
-        knowledge_base=knowledge_base,
-        scenario=scenario,
-        session=session
-    )
-
-    return DocumentUploadResponse.model_validate(document)
-
-@route.get("/{knowledge_base_id}/documents", status_code=status.HTTP_200_OK, response_model=list[DocumentUploadResponse])
-def get_documents(knowledge_base_id: UUID, session: Session = Depends(get_session)):
-    knowledge_base = session.get(
-        KnowledgeBase,
-        knowledge_base_id
-    )
-
-    if not knowledge_base:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Knowledge base not found"
-        )
-
-    query = select(Document).where(Document.knowledge_base_id==knowledge_base_id)
-    return session.exec(query).all()
-
-@route.post("/{knowledge_base_id}/documents/{document_id}/process", status_code=status.HTTP_202_ACCEPTED, response_model=DocumentUploadResponse)
-def document_process(knowledge_base_id: UUID, document_id: UUID, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
-    knowledge_base = session.get(
-        KnowledgeBase,
-        knowledge_base_id
-    )
-
-    if not knowledge_base:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Knowledge base not found"
-        )
-
-    document = session.get(
-        Document,
-        document_id
-    )
     
-    if not document:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document is not found"
+        if not knowledge_base:
+            raise HTTPException(
+                status_code=404,
+                detail="Knowledge base not found"
+            )
+        if scenario:
+            scenario = scenario.strip().upper().replace(" ", "_")
+    
+        document = save_document(
+            file=file,
+            knowledge_base=knowledge_base,
+            scenario=scenario,
+            session=session
         )
-    if document.knowledge_base_id != knowledge_base_id:
+    
+        return DocumentUploadResponse.model_validate(document)
+    except HTTPException:
+        raise
+    except Exception:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document not found in this knowledge base"
-        )
-    if document.status == DocumentStatus.PROCESSING:
-        raise HTTPException(
-            status_code=409,
-            detail="Document is already processing"
-        )
-    if document.status == DocumentStatus.COMPLETED:
-        raise HTTPException(
-            status_code=409,
-            detail="Document already processed"
-        )
-    if document.status not in (DocumentStatus.UPLOADED, DocumentStatus.FAILED):
-        raise HTTPException(
-            status_code=400,
-            detail="Document cannot be processed"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to get Knowledge details."
         )
 
-    document.status = DocumentStatus.PROCESSING
+@route.get("/{tenant_id}/{knowledge_base_id}/documents", status_code=status.HTTP_200_OK, response_model=list[DocumentUploadResponse])
+def get_documents(knowledge_base_id: UUID, tenant_id: UUID, session: Session = Depends(get_session), current_user: CurrentAuth = Depends(get_current_user)):
+    try:
+        user_has_tenant_access(current_user.user.id, tenant_id, session)
+        knowledge_base = session.get(
+            KnowledgeBase,
+            knowledge_base_id
+        )
+    
+        if not knowledge_base:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Knowledge base not found"
+            )
+    
+        query = select(Document).where(Document.knowledge_base_id==knowledge_base_id)
+        return session.exec(query).all()
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to get Knowledge details."
+        )
 
-    session.add(document)
-    session.commit()
-    session.refresh(document)
-
-    document_data = {
-        "id": str(document.id),
-        "filename": document.filename,
-        "file_path": document.file_path,
-        "file_type": document.file_type.value,
-        "scenario": document.scenario,
-        "knowledge_base_id": str(document.knowledge_base_id),
-        "tenant_id": str(document.tenant_id)
-    }
-
-    background_tasks.add_task(
-        process_document,
-        document_data
-    )
-
-    return DocumentUploadResponse.model_validate(document)
-
+@route.post("/{tenant_id}/{knowledge_base_id}/documents/{document_id}/process", status_code=status.HTTP_202_ACCEPTED, response_model=DocumentUploadResponse)
+def document_process( tenant_id: UUID,knowledge_base_id: UUID, document_id: UUID, background_tasks: BackgroundTasks,current_user: CurrentAuth = Depends(get_current_user), session: Session = Depends(get_session)):
+    try:
+        member_role = user_has_tenant_access(current_user.user.id, tenant_id, session)
+        if member_role not in {
+            TenantRole.ADMIN,
+            TenantRole.FOLDER_ADMINISTRATOR
+        }:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to create a Knowledge base."
+            )
+        
+        knowledge_base = session.get(
+            KnowledgeBase,
+            knowledge_base_id
+        )
+    
+        if not knowledge_base:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Knowledge base not found"
+            )
+    
+        document = session.get(
+            Document,
+            document_id
+        )
+        
+        if not document:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document is not found"
+            )
+        if document.knowledge_base_id != knowledge_base_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found in this knowledge base"
+            )
+        if document.status == DocumentStatus.PROCESSING:
+            raise HTTPException(
+                status_code=409,
+                detail="Document is already processing"
+            )
+        if document.status == DocumentStatus.COMPLETED:
+            raise HTTPException(
+                status_code=409,
+                detail="Document already processed"
+            )
+        if document.status not in (DocumentStatus.UPLOADED, DocumentStatus.FAILED):
+            raise HTTPException(
+                status_code=400,
+                detail="Document cannot be processed"
+            )
+    
+        document.status = DocumentStatus.PROCESSING
+    
+        session.add(document)
+        session.commit()
+        session.refresh(document)
+    
+        document_data = {
+            "id": str(document.id),
+            "filename": document.filename,
+            "file_path": document.file_path,
+            "file_type": document.file_type.value,
+            "scenario": document.scenario,
+            "knowledge_base_id": str(document.knowledge_base_id),
+            "tenant_id": str(document.tenant_id)
+        }
+    
+        background_tasks.add_task(
+            process_document,
+            document_data
+        )
+    
+        return DocumentUploadResponse.model_validate(document)
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to get Knowledge details."
+        )
 

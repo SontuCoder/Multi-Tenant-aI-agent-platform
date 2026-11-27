@@ -320,3 +320,96 @@ class EmbeddingModel(SQLModel, table=True):
         sa_type=DateTime(timezone=True),
         nullable=False
     )
+
+
+# ==========================================
+# 5. AGENT AI TOKEN Table
+# ==========================================
+
+class AgentAPIToken(SQLModel, table=True):
+
+    __tablename__ = "agent_api_tokens"
+
+    id: UUID = Field(
+        default_factory=uuid4,
+        primary_key=True
+    )
+
+    user_id: UUID = Field(
+        foreign_key="user.id",
+        nullable=False,
+        index=True
+    )
+
+    tenant_id: UUID = Field(
+        nullable=False,
+        index=True
+    )
+
+    knowledge_base_id: UUID = Field(
+        nullable=False,
+        index=True
+    )
+
+    name: str = Field(
+        sa_type=String(100),
+        nullable=False
+    )
+
+    token_prefix: str = Field(
+        sa_type=String(20),
+        nullable=False,
+        index=True
+    )
+
+    token_hash: str = Field(
+        sa_type=String(128),
+        nullable=False,
+        unique=True
+    )
+
+    expires_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),
+        nullable=True
+    )
+
+    last_used_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),
+        nullable=True
+    )
+
+    revoked_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),
+        nullable=True
+    )
+
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_type=DateTime(timezone=True),
+        nullable=False
+    )
+
+    __table_args__ = (
+
+        ForeignKeyConstraint(
+            ["knowledge_base_id", "tenant_id"],
+            ["knowledge_bases.id", "knowledge_bases.tenant_id"],
+            ondelete="CASCADE",
+            name="fk_api_token_knowledge_tenant"
+        ),
+
+        Index(
+            "idx_api_token_user_tenant",
+            "user_id",
+            "tenant_id"
+        ),
+
+        Index(
+            "idx_api_token_knowledge_tenant",
+            "knowledge_base_id",
+            "tenant_id"
+        ),
+    )

@@ -13,35 +13,3 @@ Agent execution	|| All three roles
 AI architecture	|| One common agent and shared LLM
 Knowledge isolation	|| Tenant + Project
 
-
-Authentication roadmap
-1. Logout API
-   
-   POST /api/auth/logout
-   - Revoke the current AuthSession.
-   - Revoke all active refresh tokens for that session.
-   - Clear the refresh-token cookie.
-2. Logout from all devices
-   
-   POST /api/auth/logout-all
-   - Find all active sessions belonging to the authenticated user.
-   - Revoke their sessions and refresh tokens.
-3. Access-token authentication dependency
-   - Validate JWT signature, issuer, audience, expiry and token type.
-   - Extract user_id and session_id.
-   - Check that the user and session still exist.
-   - Reject revoked or expired sessions.
-4. Forgot password and reset password
-   - Request password-reset email.
-   - Generate a secure, single-use reset token.
-   - Validate token and update password.
-   - Revoke all existing sessions after a successful reset.
-5. Resend email verification
-   - Generate a new verification token.
-   - Invalidate or consume previous active verification tokens.
-   - Send a new verification link.
-6. Account profile API
-   
-   GET /api/accounts/me
-   
-   Return authenticated user's basic account information.

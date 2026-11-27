@@ -1,8 +1,8 @@
 from logging.config import fileConfig
 from sqlmodel import SQLModel
 from app.core.config import settings
-from app.database.models import KnowledgeBase, Document, DocumentChunk, EmbeddingModel
-from app.database.user_tenant_models import User, TenantMembership, Tenant, EmailVerificationToken, RefreshToken, PasswordResetToken, AuthSession, AuthSecurityEvent 
+from app.database.models import KnowledgeBase, Document, DocumentChunk, EmbeddingModel, AgentAPIToken
+from app.database.user_tenant_models import User, TenantMembership, Tenant, EmailVerificationToken, RefreshToken, PasswordResetToken, AuthSession, AuthSecurityEvent
 
 from sqlalchemy import engine_from_config, pool
 from alembic import context

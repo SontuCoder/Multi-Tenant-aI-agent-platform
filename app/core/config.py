@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     RESEND_FROM_EMAIL:str
     FRONTEND_URL: str
     IS_Prod:bool = False
+    AGENT_URL: str
+    AGENT_TOKEN_EXPIRE_DAYS: int
 
     model_config = SettingsConfigDict(
         env_file=".env",

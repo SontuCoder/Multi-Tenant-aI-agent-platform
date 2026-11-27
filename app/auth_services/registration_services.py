@@ -61,7 +61,6 @@ async def register_user(user_data: UserRegister, session: Session):
         await send_verification_email(user.email, verification_token)
         session.commit()
         session.refresh(user)
-
         return user, verification_token
 
     except Exception:

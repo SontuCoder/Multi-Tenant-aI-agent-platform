@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 from jose import jwt, JWTError
 from pwdlib import PasswordHash
-from core.config import settings
+from .config import settings
 import secrets
 import hashlib
 
