@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import EmailStr, field_validator
 from datetime import datetime
 import re
+from database import TenantRole
 
 class MailData(SQLModel):
     subject: str
@@ -52,12 +53,14 @@ class APITokenCreate(SQLModel):
 class APITokenResponse(SQLModel):
     id: UUID
     name: str
+    user_id: UUID
+    user_name: str
+    user_email: EmailStr
+    user_role: TenantRole
     tenant_id: UUID
     knowledge_base_id: UUID
     token_prefix: str
     expires_at: datetime | None
-    last_used_at: datetime | None
-    revoked_at: datetime | None
     created_at: datetime
 
 
